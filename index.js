@@ -14,11 +14,11 @@ app.use(express.static(path.join(__dirname, "public")));
 // ─── Credenciales ML ──────────────────────────────────────────────────────────
 const MELI_CLIENT_ID     = process.env.MELI_CLIENT_ID     || "6172573622414849";
 const MELI_CLIENT_SECRET = process.env.MELI_CLIENT_SECRET || "jxg6pZpjQoA4q3H5cJMtkrSIP8Kiy8pT";
-const REDIRECT_URI       = process.env.REDIRECT_URI       || "https://meli-whatsapp-bot.onrender.com";
-const APP_URL            = process.env.APP_URL            || "https://meli-whatsapp-bot.onrender.com";
+const REDIRECT_URI       = process.env.REDIRECT_URI       || "https://meli-dashboard-awyd.onrender.com";
+const APP_URL            = process.env.APP_URL            || "https://meli-dashboard-awyd.onrender.com";
 
-let ACCESS_TOKEN  = process.env.MELI_ACCESS_TOKEN  || "";
-let REFRESH_TOKEN = process.env.MELI_REFRESH_TOKEN || "";
+let ACCESS_TOKEN  = process.env.MELI_ACCESS_TOKEN  || "APP_USR-6172573622414849-051814-2756fa9b766b4d0c8b558fda41de11ea-2624087717";
+let REFRESH_TOKEN = process.env.MELI_REFRESH_TOKEN || "TG-6a0b5d4f3e259d00016d8f8b-2624087717";
 
 // ─── Estado en memoria ────────────────────────────────────────────────────────
 const ordenesProcessadas = new Set();
