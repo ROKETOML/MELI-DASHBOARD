@@ -17,8 +17,8 @@ const MELI_CLIENT_SECRET = process.env.MELI_CLIENT_SECRET || "jxg6pZpjQoA4q3H5cJ
 const REDIRECT_URI       = process.env.REDIRECT_URI       || "https://meli-dashboard-awyd.onrender.com";
 const APP_URL            = process.env.APP_URL            || "https://meli-dashboard-awyd.onrender.com";
 
-let ACCESS_TOKEN  = process.env.MELI_ACCESS_TOKEN  || "APP_USR-6172573622414849-051814-2756fa9b766b4d0c8b558fda41de11ea-2624087717";
-let REFRESH_TOKEN = process.env.MELI_REFRESH_TOKEN || "TG-6a0b5d4f3e259d00016d8f8b-2624087717";
+let ACCESS_TOKEN  = process.env.MELI_ACCESS_TOKEN  || "APP_USR-6172573622414849-051814-d2639d754484e1dd067b1ba205629695-2624087717";
+let REFRESH_TOKEN = process.env.MELI_REFRESH_TOKEN || "TG-6a0b610e3a2f2700013dd896-2624087717";
 
 // ─── Estado en memoria ────────────────────────────────────────────────────────
 const ordenesProcessadas = new Set();
