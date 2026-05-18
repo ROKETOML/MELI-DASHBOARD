@@ -1,323 +1,364 @@
-const express = require("express");
-const axios = require("axios");
-const http = require("http");
-const WebSocket = require("ws");
-const path = require("path");
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ML Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0f0f;--bg2:#161616;--bg3:#1e1e1e;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#f0f0f0;--text2:#888;--text3:#444;
+  --accent:#FFE600;--green:#22c55e;--red:#ef4444;--orange:#f59e0b;--blue:#3b82f6;
+  --r:10px;--r2:14px;
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+}
+html{font-size:14px}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh}
+.shell{max-width:1180px;margin:0 auto;padding:24px 20px}
 
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+/* Topbar */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.topbar-l{display:flex;align-items:center;gap:10px}
+.ml-badge{background:var(--accent);color:#111;font-weight:600;font-size:11px;padding:4px 10px;border-radius:6px;letter-spacing:.5px}
+.topbar h1{font-size:15px;font-weight:500}
+.topbar-r{display:flex;align-items:center;gap:12px}
+.live-pill{display:flex;align-items:center;gap:6px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:100px;padding:4px 12px;font-size:11px;color:var(--green);font-weight:500}
+.live-pill.off{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.2);color:var(--red)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.5s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.tabs{display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px}
+.tab{background:none;border:none;color:var(--text2);font-family:var(--font);font-size:12px;font-weight:500;padding:4px 14px;border-radius:6px;cursor:pointer;transition:all .15s}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--bg2);color:var(--text);border:1px solid var(--border2)}
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+/* KPIs */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:15px;transition:border-color .2s}
+.kpi:hover{border-color:var(--border2)}
+.kpi-lbl{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;font-weight:500;margin-bottom:8px}
+.kpi-val{font-size:24px;font-weight:600;color:var(--text);line-height:1;margin-bottom:5px;font-variant-numeric:tabular-nums}
+.kpi-val.accent{color:var(--accent)}
+.kpi-sub{font-size:11px;color:var(--text3)}
 
-// ─── Credenciales ML ──────────────────────────────────────────────────────────
-const MELI_CLIENT_ID     = process.env.MELI_CLIENT_ID     || "6172573622414849";
-const MELI_CLIENT_SECRET = process.env.MELI_CLIENT_SECRET || "jxg6pZpjQoA4q3H5cJMtkrSIP8Kiy8pT";
-const REDIRECT_URI       = process.env.REDIRECT_URI       || "https://meli-whatsapp-bot.onrender.com";
-const APP_URL            = process.env.APP_URL            || "https://meli-whatsapp-bot.onrender.com";
+/* Grid 2 col */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+@media(max-width:660px){.grid2{grid-template-columns:1fr}}
 
-let ACCESS_TOKEN  = process.env.MELI_ACCESS_TOKEN  || "APP_USR-6172573622414849-051814-2756fa9b766b4d0c8b558fda41de11ea-2624087717";
-let REFRESH_TOKEN = process.env.MELI_REFRESH_TOKEN || "TG-6a0b5d4f3e259d00016d8f8b-2624087717";
+/* Panel */
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:13px 16px 11px;border-bottom:1px solid var(--border)}
+.pt{font-size:13px;font-weight:500;color:var(--text);display:flex;align-items:center;gap:7px}
+.pt svg{opacity:.55}
+.pc{font-size:11px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:2px 8px;border-radius:100px}
+.pc.warn{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.2);color:var(--red)}
 
-// ─── Estado en memoria ────────────────────────────────────────────────────────
-const ordenesProcessadas = new Set();
-const ordenesEnProceso   = new Set();
-let ventasRecientes = [];
-let preguntasRecientes = [];
-let stockItems = [];
+/* Ventas */
+.sale{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);transition:background .15s;animation:fadeIn .35s ease}
+.sale:last-child{border-bottom:none}
+.sale:hover{background:var(--bg3)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+.sind{width:7px;height:7px;border-radius:50%;background:var(--green);margin-top:4px;flex-shrink:0}
+.sind.old{background:var(--text3)}
+.si{flex:1;min-width:0}
+.sn{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.sm{font-size:11px;color:var(--text3)}
+.sr{text-align:right;flex-shrink:0}
+.sa{font-size:13px;font-weight:600;color:var(--text);font-family:var(--mono)}
+.sh{font-size:11px;color:var(--text3);font-family:var(--mono)}
 
-let stats = {
-  hoy:    { monto: 0, ordenes: 0, fecha: hoyAR() },
-  semana: { monto: 0, ordenes: 0 },
-  mes:    { monto: 0, ordenes: 0 },
+/* Preguntas */
+.qi{padding:10px 16px;border-bottom:1px solid var(--border);transition:background .15s}
+.qi:last-child{border-bottom:none}
+.qi:hover{background:var(--bg3)}
+.qm{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+.qfrom{font-size:11px;color:var(--text2);font-weight:500}
+.qt{font-size:11px;color:var(--text3);font-family:var(--mono)}
+.qtxt{font-size:13px;color:var(--text);margin-bottom:2px}
+.qprod{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bnew{font-size:10px;font-weight:600;background:rgba(59,130,246,.15);color:var(--blue);border:1px solid rgba(59,130,246,.25);padding:1px 7px;border-radius:100px;text-transform:uppercase;letter-spacing:.4px}
+
+/* Stock */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.scol{border-right:1px solid var(--border)}
+.scol:last-child{border-right:none}
+.sitem{display:flex;align-items:center;gap:9px;padding:9px 16px;border-bottom:1px solid var(--border);transition:background .15s}
+.sitem:hover{background:var(--bg3)}
+.sname{flex:1;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sbar-w{width:56px;height:4px;background:var(--bg3);border-radius:2px;flex-shrink:0}
+.sbar{height:4px;border-radius:2px;transition:width .5s ease}
+.sqty{font-size:12px;color:var(--text2);min-width:26px;text-align:right;font-family:var(--mono);flex-shrink:0}
+.bstock{font-size:10px;font-weight:600;padding:2px 7px;border-radius:100px;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0}
+.bok{background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
+.bbajo{background:rgba(245,158,11,.1);color:var(--orange);border:1px solid rgba(245,158,11,.2)}
+.bcrit{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+
+.empty{padding:28px 16px;text-align:center;color:var(--text3);font-size:13px}
+
+/* Toast */
+.toast-wrap{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:999;pointer-events:none}
+.toast{background:var(--bg2);border:1px solid var(--border2);border-left:3px solid var(--green);border-radius:var(--r);padding:11px 15px;min-width:240px;max-width:300px;animation:slideIn .3s ease;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+@keyframes slideIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+.toast-title{font-size:11px;font-weight:600;color:var(--green);margin-bottom:2px}
+.toast-body{font-size:12px;color:var(--text2)}
+.toast-amt{font-size:15px;font-weight:600;color:var(--text);font-family:var(--mono)}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <div class="topbar">
+    <div class="topbar-l">
+      <span class="ml-badge">ML</span>
+      <h1>Dashboard de ventas</h1>
+    </div>
+    <div class="topbar-r">
+      <div class="live-pill off" id="livePill">
+        <span class="dot"></span>
+        <span id="liveLabel">Conectando...</span>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-p="hoy"    onclick="setPeriodo('hoy')">Hoy</button>
+        <button class="tab"        data-p="semana" onclick="setPeriodo('semana')">Semana</button>
+        <button class="tab"        data-p="mes"    onclick="setPeriodo('mes')">Mes</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-lbl">Ventas</div>
+      <div class="kpi-val accent" id="kMonto">—</div>
+      <div class="kpi-sub" id="kMontoSub">cargando...</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-lbl">Órdenes</div>
+      <div class="kpi-val" id="kOrdenes">—</div>
+      <div class="kpi-sub" id="kOrdenesSub">cargando...</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-lbl">Ticket prom.</div>
+      <div class="kpi-val" id="kTicket">—</div>
+      <div class="kpi-sub">por orden</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-lbl">Preguntas</div>
+      <div class="kpi-val" id="kPregs">—</div>
+      <div class="kpi-sub">sin responder</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-lbl">Stock crítico</div>
+      <div class="kpi-val" id="kCrit">—</div>
+      <div class="kpi-sub">productos</div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="ph">
+        <div class="pt">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          Ventas en tiempo real
+        </div>
+        <span class="pc" id="cVentas">0</span>
+      </div>
+      <div id="listaVentas"><div class="empty">Esperando ventas...</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph">
+        <div class="pt">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Preguntas
+        </div>
+        <span class="pc warn" id="cPregs">0</span>
+      </div>
+      <div id="listaPregs"><div class="empty">Sin preguntas pendientes</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ph">
+      <div class="pt">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        Stock de productos
+      </div>
+      <span class="pc" id="cStock">0</span>
+    </div>
+    <div class="sgrid" id="listaStock">
+      <div class="empty" style="grid-column:1/-1">Cargando stock...</div>
+    </div>
+  </div>
+
+</div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+const S = {
+  periodo: 'hoy',
+  stats: { hoy:{monto:0,ordenes:0}, semana:{monto:0,ordenes:0}, mes:{monto:0,ordenes:0} },
+  ventas: [], preguntas: [], stock: []
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function hoyAR() {
-  return new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+function fmt(n) { return n != null ? Math.round(n).toLocaleString('es-AR') : '—'; }
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; }
+
+function renderKPIs() {
+  const d = S.stats[S.periodo] || {monto:0,ordenes:0};
+  const ticket = d.ordenes > 0 ? Math.round(d.monto / d.ordenes) : 0;
+  const labels = {hoy:'acumulado hoy', semana:'últimos 7 días', mes:'este mes'};
+  document.getElementById('kMonto').textContent    = 'ARS ' + fmt(d.monto);
+  document.getElementById('kMontoSub').textContent = labels[S.periodo];
+  document.getElementById('kOrdenes').textContent  = d.ordenes;
+  document.getElementById('kOrdenesSub').textContent = 'ventas ' + S.periodo;
+  document.getElementById('kTicket').textContent   = ticket > 0 ? 'ARS ' + fmt(ticket) : '—';
+  document.getElementById('kPregs').textContent    = S.preguntas.length;
+  const crit = S.stock.filter(s => s.estado === 'critico').length;
+  document.getElementById('kCrit').textContent     = crit;
 }
 
-function horaAR() {
-  return new Date().toLocaleTimeString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit" });
+function renderVentas() {
+  const el = document.getElementById('listaVentas');
+  document.getElementById('cVentas').textContent = S.ventas.length;
+  if (!S.ventas.length) { el.innerHTML = '<div class="empty">Esperando ventas...</div>'; return; }
+  el.innerHTML = S.ventas.slice(0,8).map((v,i) => {
+    const tit = v.items?.length ? (v.items.length === 1 ? v.items[0].titulo : v.items[0].titulo + ' +' + (v.items.length-1)) : 'Venta';
+    return `<div class="sale">
+      <div class="sind${i===0?'':' old'}"></div>
+      <div class="si">
+        <div class="sn">${esc(tit)}</div>
+        <div class="sm">${esc(v.comprador)} · ${v.hora||''}</div>
+      </div>
+      <div class="sr">
+        <div class="sa">${fmt(v.total)}</div>
+        <div class="sh">${v.moneda||'ARS'}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
-function tiempoRelativo(fechaStr) {
-  const diff = (Date.now() - new Date(fechaStr).getTime()) / 1000;
-  if (diff < 60)    return "ahora";
-  if (diff < 3600)  return `${Math.floor(diff / 60)} min`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  return `${Math.floor(diff / 86400)}d`;
+function renderPreguntas() {
+  const el = document.getElementById('listaPregs');
+  document.getElementById('cPregs').textContent = S.preguntas.length;
+  if (!S.preguntas.length) { el.innerHTML = '<div class="empty">Sin preguntas pendientes ✓</div>'; return; }
+  el.innerHTML = S.preguntas.slice(0,6).map(q => `
+    <div class="qi">
+      <div class="qm">
+        <span class="qfrom">${esc(q.comprador)}</span>
+        <span style="display:flex;align-items:center;gap:6px">
+          <span class="bnew">nueva</span>
+          <span class="qt">${q.hace||''}</span>
+        </span>
+      </div>
+      <div class="qtxt">${esc(q.texto)}</div>
+      <div class="qprod">${esc(q.itemTitulo||'')}</div>
+    </div>`).join('');
 }
 
-function nivelStock(disponible, inicial) {
-  if (!inicial || inicial === 0) return "ok";
-  const ratio = disponible / inicial;
-  if (disponible <= 3 || ratio <= 0.1) return "critico";
-  if (ratio <= 0.3) return "bajo";
-  return "ok";
+function renderStock() {
+  const el = document.getElementById('listaStock');
+  document.getElementById('cStock').textContent = S.stock.length;
+  if (!S.stock.length) { el.innerHTML = '<div class="empty" style="grid-column:1/-1">Sin datos de stock</div>'; return; }
+  const perCol = Math.ceil(S.stock.length / Math.max(1, Math.ceil(S.stock.length / 5)));
+  const cols = [];
+  for (let i = 0; i < S.stock.length; i += perCol) cols.push(S.stock.slice(i, i + perCol));
+  el.innerHTML = cols.map(col => `<div class="scol">${col.map(item => {
+    const ratio = item.stockInicial > 0 ? Math.min(100, (item.stock / item.stockInicial) * 100) : 50;
+    const bc = item.estado==='critico' ? 'var(--red)' : item.estado==='bajo' ? 'var(--orange)' : 'var(--green)';
+    const cls = item.estado==='critico' ? 'bcrit' : item.estado==='bajo' ? 'bbajo' : 'bok';
+    const lbl = item.estado==='critico' ? 'crítico' : item.estado==='bajo' ? 'bajo' : 'ok';
+    return `<div class="sitem">
+      <div class="sname">${esc(item.titulo)}</div>
+      <div class="sbar-w"><div class="sbar" style="width:${ratio}%;background:${bc}"></div></div>
+      <div class="sqty">${item.stock}</div>
+      <span class="bstock ${cls}">${lbl}</span>
+    </div>`;
+  }).join('')}</div>`).join('');
 }
 
-function resetearSiEsNuevoDia() {
-  const hoy = hoyAR();
-  if (hoy !== stats.hoy.fecha) {
-    console.log(`🔄 Nuevo día (${hoy}), reseteando acumulado`);
-    stats.hoy = { monto: 0, ordenes: 0, fecha: hoy };
-    ventasRecientes = ventasRecientes.filter(v => v.fecha === hoy);
-  }
+function render() { renderKPIs(); renderVentas(); renderPreguntas(); renderStock(); }
+
+function setPeriodo(p) {
+  S.periodo = p;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.p === p));
+  renderKPIs();
 }
 
-// ─── WebSockets ───────────────────────────────────────────────────────────────
-function broadcast(tipo, datos) {
-  const msg = JSON.stringify({ tipo, datos, ts: Date.now() });
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) client.send(msg);
-  });
+function showToast(venta) {
+  const wrap = document.getElementById('toasts');
+  const tit = venta.items?.length ? venta.items[0].titulo : 'Venta';
+  const d = document.createElement('div');
+  d.className = 'toast';
+  d.innerHTML = `<div class="toast-title">Nueva venta</div>
+    <div class="toast-body">${esc(tit)}</div>
+    <div class="toast-amt">ARS ${fmt(venta.total)}</div>`;
+  wrap.appendChild(d);
+  setTimeout(() => d.remove(), 5000);
 }
 
-wss.on("connection", (ws) => {
-  console.log("🖥️  Cliente dashboard conectado");
-  ws.send(JSON.stringify({
-    tipo: "init",
-    datos: { stats, ventasRecientes, preguntasRecientes, stockItems }
-  }));
-});
+// WebSocket
+let ws, wsTimer;
+function conectar() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
 
-// ─── Token ML ─────────────────────────────────────────────────────────────────
-async function canjearCodigo(code) {
-  const res = await axios.post(
-    "https://api.mercadolibre.com/oauth/token",
-    `grant_type=authorization_code&client_id=${MELI_CLIENT_ID}&client_secret=${MELI_CLIENT_SECRET}&code=${code}&redirect_uri=${REDIRECT_URI}`,
-    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-  );
-  ACCESS_TOKEN  = res.data.access_token;
-  REFRESH_TOKEN = res.data.refresh_token;
-  console.log("✅ Token canjeado correctamente");
-  console.log("ACCESS_TOKEN:", ACCESS_TOKEN);
-  console.log("REFRESH_TOKEN:", REFRESH_TOKEN);
-}
+  ws.onopen = () => {
+    const p = document.getElementById('livePill');
+    p.classList.remove('off');
+    document.getElementById('liveLabel').textContent = 'en vivo';
+    clearTimeout(wsTimer);
+  };
 
-async function renovarToken() {
-  if (!REFRESH_TOKEN) { console.log("⚠️  Sin refresh token"); return; }
-  try {
-    console.log("🔄 Renovando Access Token...");
-    const res = await axios.post(
-      "https://api.mercadolibre.com/oauth/token",
-      `grant_type=refresh_token&client_id=${MELI_CLIENT_ID}&client_secret=${MELI_CLIENT_SECRET}&refresh_token=${REFRESH_TOKEN}`,
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-    );
-    ACCESS_TOKEN  = res.data.access_token;
-    REFRESH_TOKEN = res.data.refresh_token;
-    console.log("✅ Token renovado correctamente");
-  } catch (error) {
-    console.error("❌ Error renovando token:", error.message);
-  }
-}
-
-setInterval(renovarToken, 5 * 60 * 60 * 1000);
-
-// ─── Keep alive ───────────────────────────────────────────────────────────────
-setInterval(() => {
-  axios.get(APP_URL)
-    .then(() => console.log("💓 Keep alive OK"))
-    .catch(() => console.log("⚠️  Keep alive falló"));
-}, 10 * 60 * 1000);
-
-// ─── ML API ───────────────────────────────────────────────────────────────────
-async function getOrden(ordenId) {
-  try {
-    const res = await axios.get(`https://api.mercadolibre.com/orders/${ordenId}`, {
-      headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
-    });
-    return res.data;
-  } catch (e) {
-    console.error("❌ Error obteniendo orden:", e.message);
-    return null;
-  }
-}
-
-async function fetchPreguntas() {
-  if (!ACCESS_TOKEN) return preguntasRecientes;
-  try {
-    const res = await axios.get(
-      `https://api.mercadolibre.com/questions/search?seller_id=2624087717&status=UNANSWERED&limit=20`,
-      { headers: { Authorization: `Bearer ${ACCESS_TOKEN}` } }
-    );
-    preguntasRecientes = (res.data.questions || []).map(q => ({
-      id:          q.id,
-      texto:       q.text,
-      comprador:   q.from?.nickname || "Usuario",
-      itemId:      q.item_id,
-      itemTitulo:  q.item?.title || q.item_id,
-      fecha:       q.date_created,
-      hace:        tiempoRelativo(q.date_created),
-    }));
-    broadcast("preguntas", preguntasRecientes);
-    return preguntasRecientes;
-  } catch (e) {
-    console.error("❌ Error preguntas:", e.message);
-    return preguntasRecientes;
-  }
-}
-
-async function fetchStock() {
-  if (!ACCESS_TOKEN) return stockItems;
-  try {
-    const res = await axios.get(
-      `https://api.mercadolibre.com/users/2624087717/items/search?limit=20`,
-      { headers: { Authorization: `Bearer ${ACCESS_TOKEN}` } }
-    );
-    const ids = (res.data.results || []).join(",");
-    if (!ids) return stockItems;
-
-    const itemsRes = await axios.get(
-      `https://api.mercadolibre.com/items?ids=${ids}`,
-      { headers: { Authorization: `Bearer ${ACCESS_TOKEN}` } }
-    );
-
-    stockItems = (itemsRes.data || [])
-      .filter(i => i.code === 200)
-      .map(i => ({
-        id:           i.body.id,
-        titulo:       i.body.title,
-        stock:        i.body.available_quantity,
-        stockInicial: i.body.initial_quantity || i.body.available_quantity,
-        precio:       i.body.price,
-        moneda:       i.body.currency_id,
-        estado:       nivelStock(i.body.available_quantity, i.body.initial_quantity),
-      }));
-
-    broadcast("stock", stockItems);
-    return stockItems;
-  } catch (e) {
-    console.error("❌ Error stock:", e.message);
-    return stockItems;
-  }
-}
-
-setInterval(async () => {
-  await fetchPreguntas();
-  await fetchStock();
-}, 5 * 60 * 1000);
-
-// ─── Rutas ────────────────────────────────────────────────────────────────────
-
-// Endpoint para canjear código OAuth desde el navegador
-app.get("/auth", async (req, res) => {
-  const code = req.query.code;
-  if (!code) {
-    return res.send(`<html><body style="font-family:sans-serif;padding:24px">
-      <h2>Falta el código</h2>
-      <p>Usá: <code>/auth?code=TG-...</code></p>
-    </body></html>`);
-  }
-  try {
-    await canjearCodigo(code);
-    // Cargar datos iniciales con el token nuevo
-    await Promise.all([fetchPreguntas(), fetchStock()]);
-    res.send(`<html><body style="font-family:monospace;padding:24px;background:#0f0f0f;color:#f0f0f0">
-      <h2 style="color:#22c55e;font-family:sans-serif">✅ Tokens obtenidos correctamente</h2>
-      <p style="color:#888;margin:16px 0 6px">Access Token:</p>
-      <pre style="background:#1e1e1e;padding:12px;border-radius:8px;word-break:break-all;color:#FFE600;font-size:12px">${ACCESS_TOKEN}</pre>
-      <p style="color:#888;margin:16px 0 6px">Refresh Token:</p>
-      <pre style="background:#1e1e1e;padding:12px;border-radius:8px;word-break:break-all;color:#FFE600;font-size:12px">${REFRESH_TOKEN}</pre>
-      <p style="color:#22c55e;margin-top:20px;font-family:sans-serif">El servidor ya está usando estos tokens. <a href="/" style="color:#3b82f6">Ir al dashboard →</a></p>
-    </body></html>`);
-  } catch (e) {
-    const msg = e.response?.data ? JSON.stringify(e.response.data, null, 2) : e.message;
-    res.send(`<html><body style="font-family:monospace;padding:24px;background:#0f0f0f;color:#ef4444">
-      <h2 style="font-family:sans-serif">❌ Error canjeando token</h2>
-      <pre style="background:#1e1e1e;padding:12px;border-radius:8px;color:#f87171;font-size:12px">${msg}</pre>
-    </body></html>`);
-  }
-});
-
-// Webhook de ML
-app.post("/webhook", async (req, res) => {
-  console.log("📩 Notificación:", JSON.stringify(req.body));
-  res.sendStatus(200);
-
-  const { topic, resource } = req.body;
-
-  if (topic === "orders_v2" || topic === "orders") {
-    const ordenId = resource.split("/").pop();
-
-    if (ordenesProcessadas.has(ordenId) || ordenesEnProceso.has(ordenId)) {
-      console.log(`⏭️  Orden ${ordenId} ya procesada, ignorando`);
-      return;
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.tipo === 'init') {
+      if (msg.datos.stats)          S.stats      = msg.datos.stats;
+      if (msg.datos.ventasRecientes) S.ventas    = msg.datos.ventasRecientes;
+      if (msg.datos.preguntas)      S.preguntas  = msg.datos.preguntas;
+      if (msg.datos.stockItems)     S.stock      = msg.datos.stockItems;
+      render();
     }
-
-    ordenesEnProceso.add(ordenId);
-    const orden = await getOrden(ordenId);
-
-    if (!orden) { ordenesEnProceso.delete(ordenId); return; }
-
-    if (orden.status === "paid") {
-      ordenesProcessadas.add(ordenId);
-      ordenesEnProceso.delete(ordenId);
-      setTimeout(() => ordenesProcessadas.delete(ordenId), 60 * 60 * 1000);
-
-      resetearSiEsNuevoDia();
-
-      const monto = orden.total_amount || 0;
-      if (orden.currency_id === "ARS") {
-        stats.hoy.monto    += monto;
-        stats.hoy.ordenes  += 1;
-        stats.semana.monto += monto;
-        stats.semana.ordenes += 1;
-        stats.mes.monto    += monto;
-        stats.mes.ordenes  += 1;
-      }
-
-      const venta = {
-        id:        orden.id,
-        comprador: orden.buyer?.nickname || "Comprador",
-        items:     orden.order_items.map(i => ({ titulo: i.item.title, cantidad: i.quantity, precio: i.unit_price })),
-        total:     monto,
-        moneda:    orden.currency_id,
-        fecha:     hoyAR(),
-        hora:      horaAR(),
-        ts:        Date.now(),
-      };
-
-      ventasRecientes.unshift(venta);
-      if (ventasRecientes.length > 100) ventasRecientes.pop();
-
-      console.log(`✅ Venta: ${orden.id} — ARS ${monto}`);
-      broadcast("venta_nueva", { venta, stats });
-
-    } else {
-      ordenesEnProceso.delete(ordenId);
+    if (msg.tipo === 'venta_nueva') {
+      if (msg.datos.stats) S.stats = msg.datos.stats;
+      S.ventas.unshift(msg.datos.venta);
+      if (S.ventas.length > 100) S.ventas.pop();
+      renderKPIs(); renderVentas();
+      showToast(msg.datos.venta);
     }
-  }
+    if (msg.tipo === 'preguntas') { S.preguntas = msg.datos || []; renderKPIs(); renderPreguntas(); }
+    if (msg.tipo === 'stock')     { S.stock     = msg.datos || []; renderKPIs(); renderStock(); }
+  };
 
-  if (topic === "questions") {
-    setTimeout(fetchPreguntas, 2000);
-  }
-});
+  ws.onclose = () => {
+    document.getElementById('livePill').classList.add('off');
+    document.getElementById('liveLabel').textContent = 'reconectando...';
+    wsTimer = setTimeout(conectar, 3000);
+  };
 
-// API REST
-app.get("/api/stats",     (req, res) => res.json({ stats, ventasRecientes: ventasRecientes.slice(0, 20) }));
-app.get("/api/preguntas", async (req, res) => res.json(await fetchPreguntas()));
-app.get("/api/stock",     async (req, res) => res.json(await fetchStock()));
-app.get("/api/init",      async (req, res) => {
-  const [preguntas, stock] = await Promise.all([fetchPreguntas(), fetchStock()]);
-  res.json({ stats, ventasRecientes: ventasRecientes.slice(0, 20), preguntas, stock });
-});
+  ws.onerror = () => ws.close();
+}
 
-// Dashboard
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+// Carga inicial REST
+async function cargarInicial() {
+  try {
+    const r = await fetch('/api/init');
+    const d = await r.json();
+    if (d.stats)          S.stats     = d.stats;
+    if (d.ventasRecientes) S.ventas   = d.ventasRecientes;
+    if (d.preguntas)      S.preguntas = d.preguntas;
+    if (d.stock)          S.stock     = d.stock;
+    render();
+  } catch(e) { console.error('Error carga inicial:', e); }
+}
 
-// ─── Arranque ─────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, async () => {
-  console.log(`🚀 Dashboard corriendo en puerto ${PORT}`);
-  if (ACCESS_TOKEN) {
-    console.log("🔑 Token cargado desde variables de entorno");
-    await Promise.all([fetchPreguntas(), fetchStock()]);
-  } else {
-    console.log("⚠️  Sin token. Visitá /auth?code=... para activar");
-  }
-});
+cargarInicial();
+conectar();
+</script>
+</body>
+</html>
